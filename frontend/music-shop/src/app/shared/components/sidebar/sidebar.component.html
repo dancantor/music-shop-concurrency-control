@@ -1,0 +1,9 @@
+<div class="card flex justify-content-center" #card>
+  <p-sidebar [(visible)]="isSidebarVisible" [modal]="false" appendTo="body">
+    <div class="sidebar-container">
+      <p-button  routerLink="/employees"><div>Employees</div></p-button>
+      <p-button  routerLink="/instruments"><div>Instruments</div></p-button>
+      <p-button  routerLink="/purchases"><div>Purchases</div></p-button>    </div>
+  </p-sidebar>
+  <p-button (click)="isSidebarVisible = true" icon="pi pi-arrow-right"></p-button>
+</div>

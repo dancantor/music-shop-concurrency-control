@@ -1,0 +1,67 @@
+<div class="page-container">
+  <p-table [value]="(instruments$ | async) || []" [tableStyle]="{ 'min-width': '150px' }" [styleClass]="'p-datatable-lg'">
+    <ng-template pTemplate="header">
+        <tr>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Item's Stock</th>
+            <th>Update Stock</th>
+        </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-instrument>
+        <tr>
+            <td>{{ instrument.name }}</td>
+            <td>{{ instrument.price }}</td>
+            <td [pEditableColumn]="instrument.itemsStock" pEditableColumnField="itemsStock">
+              <p-cellEditor>
+                <ng-template pTemplate="input">
+                  <p-inputNumber [(ngModel)]="instrument.itemsStock" mode="decimal" [useGrouping]="false"> </p-inputNumber>
+                </ng-template>
+                <ng-template pTemplate="output">
+                  {{ instrument.itemsStock}}
+                </ng-template>
+              </p-cellEditor>
+            </td>
+            <td>
+              <p-button (onClick)="updateInstrumentsStatus(instrument)">Update Stock</p-button>
+            </td>
+        </tr>
+    </ng-template>
+    <ng-template pTemplate="footer">
+      <tr>
+          <td [pEditableColumn]="">
+            <p-cellEditor>
+              <ng-template pTemplate="input">
+                  <input pInputText type="text" [(ngModel)]="newInstrument.name" />
+              </ng-template>
+              <ng-template pTemplate="output">
+                {{ newInstrument.name ?? "" }}
+              </ng-template>
+            </p-cellEditor>
+          </td>
+          <td [pEditableColumn]="">
+            <p-cellEditor>
+              <ng-template pTemplate="input">
+                <p-inputNumber [(ngModel)]="newInstrument.price" mode="decimal" [useGrouping]="false"> </p-inputNumber>
+              </ng-template>
+              <ng-template pTemplate="output">
+                {{ newInstrument.price ?? "" }}
+              </ng-template>
+            </p-cellEditor>
+          </td>
+          <td [pEditableColumn]="">
+            <p-cellEditor>
+              <ng-template pTemplate="input">
+                <p-inputNumber [(ngModel)]="newInstrument.itemsStock" mode="decimal" [useGrouping]="false"> </p-inputNumber>
+              </ng-template>
+              <ng-template pTemplate="output">
+                {{ newInstrument.itemsStock ?? "" }}
+              </ng-template>
+            </p-cellEditor>
+          </td>
+          <td></td>
+      </tr>
+  </ng-template>
+  </p-table>
+  <p-button class="save-cell" [disabled]="!isFieldCompleted()" (onClick)="saveNewInstrument()">Save New Cell</p-button>
+</div>
