@@ -1,5 +1,6 @@
 using MusicShop.Business.Model;
 using MusicShop.Business.Service.Interfaces;
+using MusicShop.ConcurrencyControl.Command.Implementations;
 using MusicShop.ConcurrencyControl.Enums;
 using MusicShop.ConcurrencyControl.Models;
 using MusicShop.ConcurrencyControl.Services;
@@ -12,11 +13,13 @@ public class MusicalInstrumentService : IMusicalInstrumentService
 {
     private readonly IMusicalInstrumentRepository _musicalInstrumentRepository;
     private readonly ConcurrencyControlService _concurrencyControlService;
+    private readonly AbortTransactionService _abortTransactionService;
 
-    public MusicalInstrumentService(IMusicalInstrumentRepository musicalInstrumentRepository, ConcurrencyControlService concurrencyControlService)
+    public MusicalInstrumentService(IMusicalInstrumentRepository musicalInstrumentRepository, ConcurrencyControlService concurrencyControlService, AbortTransactionService abortTransactionService)
     {
         _musicalInstrumentRepository = musicalInstrumentRepository;
         _concurrencyControlService = concurrencyControlService;
+        _abortTransactionService = abortTransactionService;
     }
 
     public async Task<List<MusicalInstrumentModel>> GetAllAsync()
@@ -32,6 +35,8 @@ public class MusicalInstrumentService : IMusicalInstrumentService
             .ToList();
 
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
+
         return instrumentsList;
     }
 
@@ -52,8 +57,11 @@ public class MusicalInstrumentService : IMusicalInstrumentService
             Price = musicalInstrumentModel.Price
         };
         var insertedInstrument = new MusicalInstrumentModel(await _musicalInstrumentRepository.InsertOneAsync(instrumentEntity));
-       
+        _abortTransactionService.InsertRollbackCommand(transaction.Id, new DeleteInstrumentCommand(_musicalInstrumentRepository, insertedInstrument.Id.Value));
+        
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
+
         return insertedInstrument;
     }
 
@@ -66,6 +74,7 @@ public class MusicalInstrumentService : IMusicalInstrumentService
         });
         _concurrencyControlService.AddNewTransaction(transaction);
         _concurrencyControlService.BlockTablesForTransaction(transaction);
+        var previousStock = (await _musicalInstrumentRepository.GetByIdAsync(instrumentId)).ItemsStock;
         
         var updatedInstrument = new MusicalInstrument()
         {
@@ -74,8 +83,10 @@ public class MusicalInstrumentService : IMusicalInstrumentService
         };
         var updatedInstrumentResult =
             new MusicalInstrumentModel(await _musicalInstrumentRepository.UpdateOneAsync(updatedInstrument));
+        _abortTransactionService.InsertRollbackCommand(transaction.Id, new UpdateInstrumentStockCommand(_musicalInstrumentRepository, previousStock.Value, instrumentId));
         
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
 
         return updatedInstrumentResult;
     }

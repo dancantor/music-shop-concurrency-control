@@ -1,5 +1,6 @@
 using MusicShop.Business.Model;
 using MusicShop.Business.Service.Interfaces;
+using MusicShop.ConcurrencyControl.Command.Implementations;
 using MusicShop.ConcurrencyControl.Enums;
 using MusicShop.ConcurrencyControl.Models;
 using MusicShop.ConcurrencyControl.Services;
@@ -35,6 +36,8 @@ public class EmployeeService : IEmployeeService
             .ToList();
 
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
+        
         return employeeList;
     }
 
@@ -55,8 +58,10 @@ public class EmployeeService : IEmployeeService
             Position = employeeModel.Position
         };
         var insertedEmployee = new EmployeeModel(await _employeeRepository.InsertOneAsync(employeeEntity));
-
+        _abortTransactionService.InsertRollbackCommand(transaction.Id, new DeleteEmployeeCommand(_employeeRepository, insertedEmployee.Id.Value));
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
+        
         return insertedEmployee;
     }
 }

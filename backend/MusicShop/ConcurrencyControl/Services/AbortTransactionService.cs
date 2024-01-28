@@ -37,6 +37,11 @@ public class AbortTransactionService
             }
         }
     }
+
+    public void RemoveTransaction(int transactionId)
+    {
+        _rollbackCommandsByTransactionId.Remove(transactionId);
+    }
     
     private async Task RollbackTransaction(int transactionId)
     {
@@ -57,5 +62,7 @@ public class AbortTransactionService
         }
 
         _concurrencyControlService.CommitTransaction(transaction);
+        RemoveTransaction(transaction.Id);
+
     }
 }

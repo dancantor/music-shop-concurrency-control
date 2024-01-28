@@ -1,5 +1,6 @@
 using MusicShop.Business.Model;
 using MusicShop.Business.Service.Interfaces;
+using MusicShop.ConcurrencyControl.Command.Implementations;
 using MusicShop.ConcurrencyControl.Enums;
 using MusicShop.ConcurrencyControl.Models;
 using MusicShop.ConcurrencyControl.Services;
@@ -15,14 +16,18 @@ public class InstrumentPurchaseService : IInstrumentPurchaseService
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IMusicalInstrumentRepository _instrumentRepository;
     private readonly ConcurrencyControlService _concurrencyControlService;
+    private readonly AbortTransactionService _abortTransactionService;
     private readonly int _nrOfRequiredValuesBeforePromotion = 3;
 
-    public InstrumentPurchaseService(IInstrumentPurchaseRepository purchaseRepository, IEmployeeRepository employeeRepository, IMusicalInstrumentRepository instrumentRepository, ConcurrencyControlService concurrencyControlService)
+    public InstrumentPurchaseService(IInstrumentPurchaseRepository purchaseRepository,
+        IEmployeeRepository employeeRepository, IMusicalInstrumentRepository instrumentRepository,
+        ConcurrencyControlService concurrencyControlService, AbortTransactionService abortTransactionService)
     {
         _purchaseRepository = purchaseRepository;
         _employeeRepository = employeeRepository;
         _instrumentRepository = instrumentRepository;
         _concurrencyControlService = concurrencyControlService;
+        _abortTransactionService = abortTransactionService;
     }
 
     public async Task<List<InstrumentPurchaseDTO>> GetAllAsync()
@@ -49,6 +54,7 @@ public class InstrumentPurchaseService : IInstrumentPurchaseService
         }).ToList();
         
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
         
         return purchasesDto;
     }
@@ -81,12 +87,18 @@ public class InstrumentPurchaseService : IInstrumentPurchaseService
             EmployeeId = purchaseModel.EmployeeId,
         });
         
+        _abortTransactionService.InsertRollbackCommand(transaction.Id, new DeletePurchaseCommand(_purchaseRepository, insertedPurchase.Id));
+        
         var currentInstrumentStock = (await _instrumentRepository.GetByIdAsync(purchaseModel.InstrumentId.Value)).ItemsStock ?? 1;
         await _instrumentRepository.UpdateOneAsync(new MusicalInstrument()
         {
             Id = purchaseModel.InstrumentId.Value,
             ItemsStock = currentInstrumentStock - 1
         });
+
+        _abortTransactionService.InsertRollbackCommand(transaction.Id,
+            new UpdateInstrumentStockCommand(_instrumentRepository, currentInstrumentStock,
+                purchaseModel.InstrumentId.Value));
         
         var instrumentsSoldByEmployeeCount =
             (await _purchaseRepository.GetAllAsync()).Count(purchase => purchase.EmployeeId == purchaseModel.EmployeeId);
@@ -95,9 +107,14 @@ public class InstrumentPurchaseService : IInstrumentPurchaseService
             Id = purchaseModel.EmployeeId.Value,
             Position = instrumentsSoldByEmployeeCount / _nrOfRequiredValuesBeforePromotion + 1
         });
+        _abortTransactionService.InsertRollbackCommand(transaction.Id,
+            new UpdateEmployeePositionCommand(_employeeRepository, purchaseModel.EmployeeId.Value,
+                (instrumentsSoldByEmployeeCount - 1) / _nrOfRequiredValuesBeforePromotion + 1));
+        
         var employeeName = (await _employeeRepository.GetByIdAsync(insertedPurchase.EmployeeId ?? 0)).Name;
         
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
         
         return new InstrumentPurchaseDTO
         {
@@ -126,12 +143,19 @@ public class InstrumentPurchaseService : IInstrumentPurchaseService
         
         var deletedPurchase = await _purchaseRepository.DeleteOneAsync(purchaseId);
         
+        _abortTransactionService.InsertRollbackCommand(transaction.Id, new InsertPurchaseCommand(_purchaseRepository, deletedPurchase));
+
+        
         var currentInstrumentStock = (await _instrumentRepository.GetByIdAsync(deletedPurchase.InstrumentId.Value)).ItemsStock ?? 1;
         await _instrumentRepository.UpdateOneAsync(new MusicalInstrument()
         {
             Id = deletedPurchase.InstrumentId.Value,
             ItemsStock = currentInstrumentStock + 1
         });
+        
+        _abortTransactionService.InsertRollbackCommand(transaction.Id,
+            new UpdateInstrumentStockCommand(_instrumentRepository, currentInstrumentStock,
+                deletedPurchase.InstrumentId.Value));
         
         var instrumentsSoldByEmployeeCount =
             (await _purchaseRepository.GetAllAsync()).Count(purchase => purchase.EmployeeId == deletedPurchase.EmployeeId);
@@ -140,9 +164,15 @@ public class InstrumentPurchaseService : IInstrumentPurchaseService
             Id = deletedPurchase.EmployeeId.Value,
             Position = instrumentsSoldByEmployeeCount / _nrOfRequiredValuesBeforePromotion + 1
         });
+        
+        _abortTransactionService.InsertRollbackCommand(transaction.Id,
+            new UpdateEmployeePositionCommand(_employeeRepository, deletedPurchase.EmployeeId.Value,
+                (instrumentsSoldByEmployeeCount + 1) / _nrOfRequiredValuesBeforePromotion + 1));
+        
         var employeeName = (await _employeeRepository.GetByIdAsync(deletedPurchase.EmployeeId ?? 0)).Name;
         
         _concurrencyControlService.CommitTransaction(transaction);
+        _abortTransactionService.RemoveTransaction(transaction.Id);
         
         return new InstrumentPurchaseDTO
         {
